@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xác Nhận & Nhận Vé Tham Dự</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: #ffffff;
+            padding: 35px 30px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            width: 100%;
+            max-width: 550px;
+        }
+
+        h2 {
+            color: #1e3c72;
+            text-align: center;
+            margin-bottom: 25px;
+            font-size: 24px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: #333;
+            font-size: 15px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 14px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        input[type="text"]:focus {
+            border-color: #2a5298;
+            box-shadow: 0 0 8px rgba(42, 82, 152, 0.2);
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: #2a5298;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        button:hover {
+            background: #1e3c72;
+        }
+
+        .error-msg {
+            color: #e74c3c;
+            margin-top: 15px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        /* Khung hiển thị vé Canvas */
+        .ticket-container {
+            display: none;
+            margin-top: 25px;
+            text-align: center;
+        }
+
+        canvas {
+            max-width: 100%;
+            height: auto;
+            border-radius: 10px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+        }
+
+        .action-btns {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .download-btn {
+            background: #2ecc71;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 50%;
+        }
+
+        .download-btn:hover {
+            background: #27ae60;
+        }
+
+        .print-btn {
+            background: #e67e22;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 50%;
+        }
+
+        .print-btn:hover {
+            background: #d35400;
+        }
+
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            .ticket-container, .ticket-container canvas {
+                visibility: visible;
+            }
+            .ticket-container {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                display: block !important;
+            }
+            .action-btns {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>XÁC NHẬN VÉ THAM DỰ</h2>
+
+    <div class="input-group">
+        <label for="fullName">Nhập chính xác Họ và Tên của bạn đã điền form:</label>
+        <input type="text" id="fullName" placeholder="Ví dụ: Nguyễn Văn A" onkeypress="handleKeyPress(event)">
+    </div>
+
+    <button onclick="checkAndGenerateTicket()">Tra Cứu & Nhận Vé</button>
+    <div id="errorMsg" class="error-msg"></div>
+
+    <div id="ticketContainer" class="ticket-container">
+        <canvas id="ticketCanvas"></canvas>
+        <div class="action-btns">
+                    </div>
+    </div>
+</div>
+
+<script>
+    // =========================================================================
+    // CẤU HÌNH PHÔI VÉ VÀ VỊ TRÍ (ĐÃ CẬP NHẬT THEO ĐÁNH DẤU CỦA BẠN)
+    // =========================================================================
+    
+    const TICKET_IMAGE_SRC = "phoi_ve.png"; 
+
+    // Tọa độ tính theo tỷ lệ % kích thước poster
+    const CONFIG = {
+        nameX_Ratio: 0.08,   // Tên nằm căn lề TRÁI (Khoảng ô vuông đỏ bạn vẽ)
+        nameY_Ratio: 0.72,   // Nằm ở độ cao 45% (ngang tầm ngực/vai)
+        
+        seatX_Ratio: 0.92,   // Số ghế nằm căn lề PHẢI
+        seatY_Ratio: 0.72,   // Cùng độ cao ngang với Tên
+        
+        textColor: "#ff0000" // Màu chữ ĐỎ TƯƠI
+    };
+
+    // =========================================================================
+    // DANH SÁCH KHÁCH HÀNG
+    // =========================================================================
+    const guestList = [
+        { name: "Thân Thùy Dương", seat: "J13" },
+        { name: "Thân Thuỳ Dung", seat: "D1" },
+        { name: "Trần Nhật Vy", seat: "D2, D3" },
+        { name: "Nguyễn Phương", seat: "D4, D5" },
+        { name: "Phan Duy Mai Khanh", seat: "C10" },
+        { name: "Lâm Gia Hân", seat: "D13, D14" },
+        { name: "Nhã Trang", seat: "D15, D16" },
+        { name: "Diệp Lê Lâm Ngân", seat: "D17, D18" },
+        { name: "Nguyễn Ngọc Phương Lan", seat: "E1, E2" },
+        { name: "Nguyễn Quốc Khánh", seat: "D19" },
+        { name: "Nguyễn Ngọc Minh Châu", seat: "E7" },
+        { name: "Nguyễn Phương Ngân", seat: "E3, E4" },
+        { name: "Cù Thị Kim Hân", seat: "E5, E6" },
+        { name: "Phan Duy Vân Khanh", seat: "F19" },
+        { name: "Hoàng Phúc thịnh", seat: "C11" },
+        { name: "Hoàng Ngọc Diệp", seat: "E16, E17" },
+        { name: "Nguyễn Phương Anh", seat: "E18, E19" },
+        { name: "Ngô Phương Anh", seat: "F1, F2" },
+        { name: "Ngô Thuỳ Tràn", seat: "F3, F4" },
+        { name: "Trần Gia Bảo Ngân", seat: "F5, F6" },
+        { name: "Nguyễn Hoài Anh", seat: "F15, F16" },
+        { name: "Nguyễn Ngọc Kim Ngân", seat: "F17, F18" },
+        { name: "Long KV", seat: "C7" },
+        { name: "Võ Hoàng Bảo Trân", seat: "G1, G2" },
+        { name: "lê mỹ phương", seat: "G3, G4" },
+        { name: "Thái Khiết Bình", seat: "G7" },
+        { name: "Nguyễn Thị Kim Thủy", seat: "G19" },
+        { name: "Nguyễn Nguyên Ngọc Ngân", seat: "L9" },
+        { name: "Nguyễn Lê Quỳnh Nhi", seat: "G5, G6" },
+        { name: "Lê Phương Linh", seat: "G15, G16" },
+        { name: "Nguyễn Ngọc Kim Ngân", seat: "M17" },
+        { name: "Lư Minh Thư", seat: "G17, G18" },
+        { name: "Võ Thị Huỳnh Như", seat: "H1, H2" },
+        { name: "Nguyễn Trần Ngọc Trâm", seat: "M16" },
+        { name: "Yn", seat: "H3, H4" },
+        { name: "Phạm Hồng Hạnh", seat: "H5, H6" },
+        { name: "Đỗ Quốc Thái", seat: "H16, H17" },
+        { name: "Lưu Quỳnh Như", seat: "M15" },
+        { name: "Trần Hoàng Minh Thư", seat: "H18, H19" },
+        { name: "Vũ Ánh Ngọc", seat: "J1, J2" },
+        { name: "Hương Giang", seat: "M14" },
+        { name: "Văn Thị Thu Hiền", seat: "J3, J4" },
+        { name: "Trần Thị Thanh Huyền", seat: "J5, J6" },
+        { name: "Lê Thị Thuý Hiền", seat: "J18, J19" },
+        { name: "Nghiêm Hoàng Minh Hằng", seat: "K1, K2" },
+        { name: "Nguyễn Thảo Vân", seat: "K3, K4" },
+        { name: "Nguyễn Hoài Hương", seat: "K5, K6" },
+        { name: "Huỳnh Thanh Thảo", seat: "K7, K8" },
+        { name: "đỗ nhật khánh", seat: "K12, K13" },
+        { name: "Võ Quốc Khánh", seat: "M9" },
+        { name: "Phan Nguyễn Thanh Trúc", seat: "K14, K15" },
+        { name: "Trần Ngọc Kim Ngân", seat: "M8" },
+        { name: "Trần Võ Gia Hân", seat: "K16, K17" },
+        { name: "Hương hoàng", seat: "K18, K19" },
+        { name: "Thân Lê Phương Nhi", seat: "M7" },
+        { name: "Nguyễn Kiều", seat: "L1, L2" },
+        { name: "Phạm Phương Yến", seat: "L3, L4" },
+        { name: "Võ Thị Huỳnh Như", seat: "L5, L6" },
+        { name: "Hồ Nguyễn Hải Anh", seat: "L7, L8" },
+        { name: "Nguyễn Trịnh Ngọc Vy", seat: "L12, L13" },
+        { name: "PHAN LÊ PHƯỢNG THY", seat: "L14, L15" },
+        { name: "Trịnh Thị Như Quỳnh", seat: "M6" },
+        { name: "Khánh Châu", seat: "M5" },
+        { name: "Vũ Ngọc Phương Anh", seat: "M4" },
+        { name: "Nguyễn Thị Thu Phương", seat: "L16, L17" },
+        { name: "Huỳnh Châu", seat: "M3" },
+        { name: "NGUYỄN LÊ NGỌC HÂN", seat: "L18, L19" },
+        { name: "Nguyễn Thị Ngọc Thi", seat: "M1, M2" },
+        { name: "Zin", seat: "C8, C9" },
+        { name: "PHẠM NGỌC QUỲNH NHI", seat: "K1, K2" },
+        { name: "Sỳ Mỹ Như ", seat: "K3, K4" },
+        { name: "Long Cẩm Quyền ", seat: "K5, K6" },
+        { name: "Nguyễn Anh Thư", seat: "K12, K13" },
+        { name: "Phạm Thị Thùy Dương", seat: "K14, K15" },
+        { name: "Võ Song Ngân", seat: "J1, J2" },
+        { name: "Lê Khánh Linh", seat: "K16" },
+        { name: "Nguyễn Khánh Linh ", seat: "E14" },
+        { name: "Nguyễn Thị Huyền Diệu", seat: "J11, J12" },
+        { name: "Phạm Thị Mỹ Duyên", seat: "J13, J14" },
+        { name: "Quách Như Ý", seat: "H12, G12" },
+        { name: "Phan Nguyễn Trúc My", seat: "G1, E1" }
+    ];
+
+    // =========================================================================
+    // XỬ LÝ TRA CỨU VÀ VẼ VÉ
+    // =========================================================================
+    let templateImage = new Image();
+    templateImage.src = TICKET_IMAGE_SRC;
+
+    function handleKeyPress(event) {
+        if (event.key === "Enter") {
+            checkAndGenerateTicket();
+        }
+    }
+
+    function normalizeText(text) {
+        if (!text) return "";
+        return text.toString()
+            .trim()
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/đ/g, "d");
+    }
+
+    function checkAndGenerateTicket() {
+        const inputName = document.getElementById('fullName').value;
+        const errorMsg = document.getElementById('errorMsg');
+        const ticketContainer = document.getElementById('ticketContainer');
+
+        errorMsg.innerText = "";
+        ticketContainer.style.display = "none";
+
+        if (!inputName.trim()) {
+            errorMsg.innerText = "Vui lòng nhập họ và tên của bạn!";
+            return;
+        }
+
+        const normalizedInput = normalizeText(inputName);
+        const foundUser = guestList.find(guest => normalizeText(guest.name) === normalizedInput);
+
+        if (!foundUser) {
+            errorMsg.innerText = "Không tìm thấy thông tin của bạn trong danh sách. Vui lòng kiểm tra lại!";
+            return;
+        }
+
+        renderTicket(foundUser.name.toUpperCase(), foundUser.seat);
+    }
+
+    function renderTicket(name, seat) {
+        const canvas = document.getElementById('ticketCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const imgWidth = templateImage.width || 800;
+        const imgHeight = templateImage.height || 1000;
+
+        canvas.width = imgWidth;
+        canvas.height = imgHeight;
+
+        // 1. Vẽ phôi vé
+        ctx.drawImage(templateImage, 0, 0, imgWidth, imgHeight);
+
+        // Kích thước chữ tự co giãn theo ảnh
+        const fontSize = Math.round(imgWidth * 0.038);
+
+        // 2. In HỌ VÀ TÊN (Bên trái - Ngang vị trí ô vuông đỏ)
+        const nameX = imgWidth * CONFIG.nameX_Ratio;
+        const nameY = imgHeight * CONFIG.nameY_Ratio;
+
+        ctx.font = `bold ${fontSize}px "Segoe UI", Arial, sans-serif`;
+        ctx.fillStyle = CONFIG.textColor; 
+        ctx.textAlign = 'left'; // Căn lề trái
+        ctx.fillText(name, nameX, nameY);
+
+        // 3. In SỐ GHẾ (Bên phải - Đối diện Họ tên)
+        const seatX = imgWidth * CONFIG.seatX_Ratio;
+        const seatY = imgHeight * CONFIG.seatY_Ratio;
+
+        ctx.textAlign = 'right'; // Căn lề phải
+        ctx.fillText('GHẾ: ' + seat, seatX, seatY);
+
+        document.getElementById('ticketContainer').style.display = 'block';
+    }
+
+    function downloadTicket() {
+        const canvas = document.getElementById('ticketCanvas');
+        const inputName = document.getElementById('fullName').value || 'Ve_Tham_Du';
+        
+        const link = document.createElement('a');
+        link.download = `Ve_${inputName.replace(/\s+/g, '_')}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+    }
+</script>
+
+</body>
+</html>
